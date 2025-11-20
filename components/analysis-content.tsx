@@ -30,12 +30,19 @@ interface ApiResponse {
 
 export function AnalysisContent() {
   const searchParams = useSearchParams()
-  const query = searchParams.get("query") || searchParams.get("q") || ""
-
+  const [query, setQuery] = useState<string>("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [apiResponse, setApiResponse] = useState<ApiResponse | null>(null)
   const [graphData, setGraphData] = useState<GraphData | null>(null)
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search)
+      const q = params.get("query") || params.get("q") || ""
+      setQuery(q)
+    }
+  }, [])
 
   useEffect(() => {
     const fetchData = async () => {
@@ -43,6 +50,8 @@ export function AnalysisContent() {
 
       try {
         setLoading(true)
+        console.log("[v0] Fetching data for query:", query)
+
         const response = await fetch("/api/generate", {
           method: "POST",
           headers: {
@@ -51,17 +60,21 @@ export function AnalysisContent() {
           body: JSON.stringify({ query }),
         })
 
+        console.log("[v0] Response status:", response.status)
+
         if (!response.ok) {
           throw new Error("Failed to fetch analysis data")
         }
 
         const result: ApiResponse = await response.json()
+        console.log("[v0] Received data:", result)
+
         setApiResponse(result)
         const data = transformToGraphData(result)
         setGraphData(data)
       } catch (err) {
-        console.error("Error fetching data:", err)
-        setError("Failed to analyze the target. Please try again.")
+        console.error("[v0] Error fetching data:", err)
+        setError("분석 대상을 가져오는데 실패했습니다. 다시 시도해주세요.")
       } finally {
         setLoading(false)
       }

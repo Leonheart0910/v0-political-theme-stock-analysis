@@ -1,4 +1,3 @@
-import { Suspense } from "react"
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -35,9 +34,7 @@ export default function AnalysisPage() {
 
       {/* Main Content */}
       <main className="flex-1 container mx-auto px-4 py-6">
-        <Suspense fallback={<AnalysisLoadingSkeleton />}>
-          <AnalysisContent />
-        </Suspense>
+        <AnalysisContent />
       </main>
     </div>
   )
