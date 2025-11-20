@@ -382,7 +382,7 @@ function NodeTooltipContent({ node }: { node: GraphNode }) {
       {node.data.evidence && node.data.evidence.length > 0 && (
         <div className="pt-2 border-t border-border space-y-2">
           <div className="text-xs font-medium text-muted-foreground">출처</div>
-          {node.data.evidence.map((evidence, idx) => (
+          {node.data.evidence.map((evidence: any, idx: number) => (
             <a
               key={idx}
               href={evidence.url}
@@ -408,7 +408,7 @@ function EdgeTooltipContent({ edge }: { edge: GraphEdge }) {
       {edge.data.evidence && edge.data.evidence.length > 0 && (
         <div className="pt-2 border-t border-border space-y-2">
           <div className="text-xs font-medium text-muted-foreground">근거</div>
-          {edge.data.evidence.map((evidence, idx) => (
+          {edge.data.evidence.map((evidence: any, idx: number) => (
             <a
               key={idx}
               href={evidence.url}

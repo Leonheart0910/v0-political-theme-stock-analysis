@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
+import httpx
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -9,6 +11,26 @@ app = FastAPI()
 @app.get("/api/health")
 def health_check():
     return {"status": "ok"}
+
+class QueryRequest(BaseModel):
+    query: str
+
+@app.post("/api/generate")
+async def proxy_generate(request: QueryRequest):
+    async with httpx.AsyncClient() as client:
+        try:
+            # Forward the request to the query service running on port 8001
+            response = await client.post(
+                "http://127.0.0.1:8001/generate",
+                json={"query": request.query},
+                timeout=60.0  # Increased timeout for deep research
+            )
+            response.raise_for_status()
+            return response.json()
+        except httpx.RequestError as exc:
+            raise HTTPException(status_code=500, detail=f"Error communicating with query service: {exc}")
+        except httpx.HTTPStatusError as exc:
+            raise HTTPException(status_code=exc.response.status_code, detail=f"Query service error: {exc.response.text}")
 
 # ... 여기에 기존 백엔드 로직 추가 ...
 
@@ -42,4 +64,5 @@ else:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("Server running at: http://localhost:8000")
+    uvicorn.run(app, host="127.0.0.1", port=8000)

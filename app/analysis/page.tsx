@@ -5,7 +5,13 @@ import { Button } from "@/components/ui/button"
 import { AnalysisContent } from "@/components/analysis-content"
 import { Skeleton } from "@/components/ui/skeleton"
 
-export default function AnalysisPage() {
+export default function AnalysisPage({
+  searchParams,
+}: {
+  searchParams: { q?: string }
+}) {
+  const query = searchParams.q || ""
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       {/* Header */}
@@ -26,7 +32,9 @@ export default function AnalysisPage() {
                 <h1 className="text-xl font-bold">PIN</h1>
               </div>
             </div>
-            <div className="text-sm text-muted-foreground hidden md:block">정치 테마주 관계도 분석</div>
+            <div className="text-sm text-muted-foreground hidden md:block">
+              분석 대상: <span className="font-medium text-foreground">{query}</span>
+            </div>
           </div>
         </div>
       </header>
@@ -34,7 +42,7 @@ export default function AnalysisPage() {
       {/* Main Content */}
       <main className="flex-1 container mx-auto px-4 py-6">
         <Suspense fallback={<AnalysisLoadingSkeleton />}>
-          <AnalysisContent />
+          <AnalysisContent query={query} />
         </Suspense>
       </main>
     </div>

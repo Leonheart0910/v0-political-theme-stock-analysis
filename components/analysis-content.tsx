@@ -1,48 +1,144 @@
 "use client"
 
-import { useSearchParams } from "next/navigation"
 import { useEffect, useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
 import { RelationshipGraph } from "@/components/relationship-graph"
-import { mockAnalysisData, mockStockData } from "@/lib/mock-data"
-import type { AnalysisReport, GraphData, GraphNode, GraphEdge } from "@/lib/types"
+import type { GraphData, Node, Link } from "@/lib/types"
 import { AlertCircle } from "lucide-react"
 
-export function AnalysisContent() {
-  const searchParams = useSearchParams()
-  const query = searchParams.get("query") || ""
+interface InfluenceChain {
+  politician: string
+  policy: string
+  industry_or_sector: string
+  companies: string[]
+  impact_description: string
+  evidence: Array<{
+    source_title: string
+    url: string
+  }>
+}
+
+interface ApiResponse {
+  report_title: string
+  time_range: string
+  influence_chains: InfluenceChain[]
+  notes: string
+}
+
+export function AnalysisContent({ query }: { query: string }) {
   const [loading, setLoading] = useState(true)
-  const [data, setData] = useState<AnalysisReport | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [apiResponse, setApiResponse] = useState<ApiResponse | null>(null)
   const [graphData, setGraphData] = useState<GraphData | null>(null)
 
   useEffect(() => {
-    // Simulate API call to FastAPI backend
-    const fetchAnalysis = async () => {
-      setLoading(true)
+    const fetchData = async () => {
+      if (!query) return
 
-      // In production, this would be:
-      // const response = await fetch(`/api/analyze?query=${encodeURIComponent(query)}`);
-      // const result = await response.json();
+      try {
+        setLoading(true)
+        const response = await fetch("/api/generate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ query }),
+        })
 
-      // Simulate network delay
-      await new Promise((resolve) => setTimeout(resolve, 1500))
+        if (!response.ok) {
+          throw new Error("Failed to fetch analysis data")
+        }
 
-      // Use mock data
-      setData(mockAnalysisData)
-
-      // Transform data into graph format
-      const graphData = transformToGraphData(mockAnalysisData, query)
-      setGraphData(graphData)
-
-      setLoading(false)
+        const result: ApiResponse = await response.json()
+        setApiResponse(result)
+        const data = transformToGraphData(result)
+        setGraphData(data)
+      } catch (err) {
+        console.error("Error fetching data:", err)
+        setError("Failed to analyze the target. Please try again.")
+      } finally {
+        setLoading(false)
+      }
     }
 
-    if (query) {
-      fetchAnalysis()
-    }
+    fetchData()
   }, [query])
+
+  const transformToGraphData = (response: ApiResponse): GraphData => {
+    const nodes: Node[] = []
+    const links: Link[] = []
+    const nodeMap = new Map<string, Node>()
+
+    // Helper to add node if it doesn't exist
+    const addNode = (id: string, type: Node["type"], label: string, metadata?: any) => {
+      if (!nodeMap.has(id)) {
+        const node: Node = {
+          id,
+          type,
+          label,
+          metadata,
+          x: 0, // Will be calculated by layout
+          y: 0,
+        }
+        nodeMap.set(id, node)
+        nodes.push(node)
+      }
+      return nodeMap.get(id)!
+    }
+
+    // Helper to add link
+    const addLink = (source: string, target: string, label?: string) => {
+      // Avoid duplicate links
+      const linkExists = links.some((l) => l.source === source && l.target === target)
+      if (!linkExists) {
+        links.push({ source, target, label })
+      }
+    }
+
+    // Process each influence chain
+    response.influence_chains.forEach((chain, index) => {
+      // 1. Input Node (Politician)
+      const politicianId = `pol-${chain.politician.replace(/\s+/g, "-").toLowerCase()}`
+      addNode(politicianId, "input", chain.politician)
+
+      // 2. Policy Node
+      // Handle "None directly linked" or empty policies
+      const policyLabel = chain.policy === "None directly linked" ? "Indirect Influence" : chain.policy
+      const policyId = `policy-${index}-${policyLabel.replace(/\s+/g, "-").toLowerCase()}`
+
+      addNode(policyId, "policy", policyLabel, {
+        description: chain.impact_description,
+        evidence: chain.evidence,
+      })
+      addLink(politicianId, policyId)
+
+      // 3. Sector Node
+      const sectorId = `sector-${chain.industry_or_sector.replace(/\s+/g, "-").toLowerCase()}`
+      addNode(sectorId, "sector", chain.industry_or_sector)
+      addLink(policyId, sectorId)
+
+      // 4. Company Nodes
+      chain.companies.forEach((company) => {
+        const companyId = `comp-${company.replace(/\s+/g, "-").toLowerCase()}`
+        // Simulate stock data since real API doesn't provide it yet
+        const isPositive = Math.random() > 0.5
+        const change = (Math.random() * 5).toFixed(2)
+
+        addNode(companyId, "enterprise", company, {
+          stockCode: "000000", // Placeholder
+          currentPrice: "0", // Placeholder
+          change: isPositive ? `+${change}%` : `-${change}%`,
+          isPositive,
+          evidence: chain.evidence, // Share evidence with company node too
+        })
+        addLink(sectorId, companyId)
+      })
+    })
+
+    return { nodes, edges: links }
+  }
 
   if (!query) {
     return (
@@ -63,18 +159,19 @@ export function AnalysisContent() {
           <div className="space-y-2">
             <p className="font-medium">관계도를 분석하고 있습니다...</p>
             <p className="text-sm text-muted-foreground">정책, 산업, 기업 간의 연결고리를 찾는 중입니다</p>
+            <p className="text-xs text-muted-foreground/80">심층 분석에는 시간이 소요될 수 있습니다.</p>
           </div>
         </div>
       </div>
     )
   }
 
-  if (!data || !graphData) {
+  if (error || !apiResponse || !graphData) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center space-y-2">
           <AlertCircle className="w-12 h-12 text-destructive mx-auto" />
-          <p className="text-muted-foreground">분석 결과를 불러올 수 없습니다</p>
+          <p className="text-muted-foreground">{error || "분석 결과를 불러올 수 없습니다"}</p>
         </div>
       </div>
     )
@@ -85,9 +182,9 @@ export function AnalysisContent() {
       {/* Header Info */}
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 className="text-2xl md:text-3xl font-bold">{data.report_title}</h2>
+          <h2 className="text-2xl md:text-3xl font-bold">{apiResponse.report_title}</h2>
           <Badge variant="secondary" className="text-xs">
-            {data.time_range}
+            {apiResponse.time_range}
           </Badge>
         </div>
         <p className="text-muted-foreground leading-relaxed">
@@ -102,123 +199,13 @@ export function AnalysisContent() {
       </Card>
 
       {/* Notes */}
-      {data.notes && (
+      {apiResponse.notes && (
         <Card className="p-4 bg-muted/50 border-muted">
           <p className="text-sm text-muted-foreground leading-relaxed">
-            <span className="font-medium text-foreground">참고사항:</span> {data.notes}
+            <span className="font-medium text-foreground">참고사항:</span> {apiResponse.notes}
           </p>
         </Card>
       )}
     </div>
   )
-}
-
-function transformToGraphData(report: AnalysisReport, inputQuery: string): GraphData {
-  const nodes: GraphNode[] = []
-  const edges: GraphEdge[] = []
-
-  // Create input node
-  const inputNodeId = "input-0"
-  nodes.push({
-    id: inputNodeId,
-    type: "input",
-    label: inputQuery,
-    data: {},
-  })
-
-  // Track unique policies, sectors, and companies
-  const policyMap = new Map<string, string>()
-  const sectorMap = new Map<string, string>()
-  const companyMap = new Map<string, string>()
-
-  report.influence_chains.forEach((chain, chainIndex) => {
-    // Create or get policy node
-    let policyId = policyMap.get(chain.policy)
-    if (!policyId) {
-      policyId = `policy-${policyMap.size}`
-      policyMap.set(chain.policy, policyId)
-      nodes.push({
-        id: policyId,
-        type: "policy",
-        label: chain.policy,
-        data: {
-          description: chain.impact_description,
-          evidence: chain.evidence,
-        },
-      })
-
-      // Edge from input to policy
-      edges.push({
-        id: `edge-input-${policyId}`,
-        source: inputNodeId,
-        target: policyId,
-        data: {},
-      })
-    }
-
-    // Create or get sector node
-    let sectorId = sectorMap.get(chain.industry_or_sector)
-    if (!sectorId) {
-      sectorId = `sector-${sectorMap.size}`
-      sectorMap.set(chain.industry_or_sector, sectorId)
-      nodes.push({
-        id: sectorId,
-        type: "sector",
-        label: chain.industry_or_sector,
-        data: {
-          description: chain.impact_description,
-          evidence: chain.evidence,
-        },
-      })
-    }
-
-    // Edge from policy to sector
-    const policySectorEdgeId = `edge-${policyId}-${sectorId}`
-    if (!edges.find((e) => e.id === policySectorEdgeId)) {
-      edges.push({
-        id: policySectorEdgeId,
-        source: policyId,
-        target: sectorId,
-        data: {
-          description: chain.impact_description,
-          evidence: chain.evidence,
-        },
-      })
-    }
-
-    // Create company nodes
-    chain.companies.forEach((company, companyIndex) => {
-      let companyId = companyMap.get(company)
-      if (!companyId) {
-        companyId = `company-${companyMap.size}`
-        companyMap.set(company, companyId)
-        nodes.push({
-          id: companyId,
-          type: "enterprise",
-          label: company,
-          data: {
-            description: chain.impact_description,
-            evidence: chain.evidence,
-            stockData: mockStockData[company],
-          },
-        })
-      }
-
-      // Edge from sector to company
-      const sectorCompanyEdgeId = `edge-${sectorId}-${companyId}`
-      if (!edges.find((e) => e.id === sectorCompanyEdgeId)) {
-        edges.push({
-          id: sectorCompanyEdgeId,
-          source: sectorId,
-          target: companyId,
-          data: {
-            description: chain.impact_description,
-            evidence: chain.evidence,
-          },
-        })
-      }
-    })
-  })
-
-  return { nodes, edges }
 }
