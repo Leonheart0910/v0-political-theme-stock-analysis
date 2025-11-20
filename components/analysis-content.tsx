@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
 import { RelationshipGraph } from "@/components/relationship-graph"
-import type { GraphData, Node, Link } from "@/lib/types"
+import type { GraphData, GraphNode, GraphEdge } from "@/lib/types"
 import { AlertCircle } from "lucide-react"
 
 interface InfluenceChain {
@@ -84,20 +84,19 @@ export function AnalysisContent() {
   }, [query])
 
   const transformToGraphData = (response: ApiResponse): GraphData => {
-    const nodes: Node[] = []
-    const links: Link[] = []
-    const nodeMap = new Map<string, Node>()
+    const nodes: GraphNode[] = []
+    const edges: GraphEdge[] = []
+    const nodeMap = new Map<string, GraphNode>()
+    let edgeIdCounter = 0
 
     // Helper to add node if it doesn't exist
-    const addNode = (id: string, type: Node["type"], label: string, metadata?: any) => {
+    const addNode = (id: string, type: GraphNode["type"], label: string, data?: GraphNode["data"]): GraphNode => {
       if (!nodeMap.has(id)) {
-        const node: Node = {
+        const node: GraphNode = {
           id,
           type,
           label,
-          metadata,
-          x: 0, // Will be calculated by layout
-          y: 0,
+          data: data || {},
         }
         nodeMap.set(id, node)
         nodes.push(node)
@@ -105,12 +104,16 @@ export function AnalysisContent() {
       return nodeMap.get(id)!
     }
 
-    // Helper to add link
-    const addLink = (source: string, target: string, label?: string) => {
-      // Avoid duplicate links
-      const linkExists = links.some((l) => l.source === source && l.target === target)
-      if (!linkExists) {
-        links.push({ source, target, label })
+    // Helper to add edge with proper structure
+    const addEdge = (source: string, target: string, data?: GraphEdge["data"]) => {
+      const edgeExists = edges.some((e) => e.source === source && e.target === target)
+      if (!edgeExists) {
+        edges.push({
+          id: `edge-${edgeIdCounter++}`,
+          source,
+          target,
+          data: data || {},
+        })
       }
     }
 
@@ -118,43 +121,64 @@ export function AnalysisContent() {
     response.influence_chains.forEach((chain, index) => {
       // 1. Input Node (Politician)
       const politicianId = `pol-${chain.politician.replace(/\s+/g, "-").toLowerCase()}`
-      addNode(politicianId, "input", chain.politician)
+      addNode(politicianId, "input", chain.politician, {})
 
       // 2. Policy Node
-      // Handle "None directly linked" or empty policies
-      const policyLabel = chain.policy === "None directly linked" ? "Indirect Influence" : chain.policy
+      const policyLabel = chain.policy === "None directly linked" ? "간접적 영향" : chain.policy
       const policyId = `policy-${index}-${policyLabel.replace(/\s+/g, "-").toLowerCase()}`
 
       addNode(policyId, "policy", policyLabel, {
         description: chain.impact_description,
         evidence: chain.evidence,
       })
-      addLink(politicianId, policyId)
+
+      // Edge from politician to policy
+      addEdge(politicianId, policyId, {
+        description: "정책 연관성",
+        evidence: chain.evidence,
+      })
 
       // 3. Sector Node
       const sectorId = `sector-${chain.industry_or_sector.replace(/\s+/g, "-").toLowerCase()}`
-      addNode(sectorId, "sector", chain.industry_or_sector)
-      addLink(policyId, sectorId)
+      addNode(sectorId, "sector", chain.industry_or_sector, {
+        description: `${chain.industry_or_sector} 산업 분야`,
+      })
+
+      // Edge from policy to sector
+      addEdge(policyId, sectorId, {
+        description: "산업 영향",
+        evidence: chain.evidence,
+      })
 
       // 4. Company Nodes
       chain.companies.forEach((company) => {
         const companyId = `comp-${company.replace(/\s+/g, "-").toLowerCase()}`
-        // Simulate stock data since real API doesn't provide it yet
+
+        // Simulate stock data (placeholder for real stock API)
         const isPositive = Math.random() > 0.5
-        const change = (Math.random() * 5).toFixed(2)
+        const changeValue = isPositive ? Math.random() * 5 : -(Math.random() * 5)
+        const price = 50000 + Math.random() * 100000
 
         addNode(companyId, "enterprise", company, {
-          stockCode: "000000", // Placeholder
-          currentPrice: "0", // Placeholder
-          change: isPositive ? `+${change}%` : `-${change}%`,
-          isPositive,
-          evidence: chain.evidence, // Share evidence with company node too
+          stockData: {
+            symbol: company.includes("(") ? company.split("(")[1].replace(")", "") : "N/A",
+            price: Math.round(price),
+            change: Math.round((changeValue * price) / 100),
+            changePercent: changeValue,
+          },
+          evidence: chain.evidence,
         })
-        addLink(sectorId, companyId)
+
+        // Edge from sector to company
+        addEdge(sectorId, companyId, {
+          description: "기업 연관성",
+          evidence: chain.evidence,
+        })
       })
     })
 
-    return { nodes, edges: links }
+    console.log("[v0] Transformed graph data:", { nodes, edges })
+    return { nodes, edges }
   }
 
   if (!query) {
