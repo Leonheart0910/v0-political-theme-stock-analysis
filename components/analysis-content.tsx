@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation" // Add useSearchParams import
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Spinner } from "@/components/ui/spinner"
@@ -27,7 +28,10 @@ interface ApiResponse {
   notes: string
 }
 
-export function AnalysisContent({ query }: { query: string }) {
+export function AnalysisContent() {
+  const searchParams = useSearchParams()
+  const query = searchParams.get("query") || searchParams.get("q") || ""
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [apiResponse, setApiResponse] = useState<ApiResponse | null>(null)

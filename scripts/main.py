@@ -21,7 +21,7 @@ async def proxy_generate(request: QueryRequest):
         try:
             # Forward the request to the query service running on port 8001
             response = await client.post(
-                "http://127.0.0.1:8001/generate",
+                "http://127.0.0.1:8000/generate",
                 json={"query": request.query},
                 timeout=60.0  # Increased timeout for deep research
             )
@@ -54,15 +54,28 @@ if os.path.exists(build_dir):
         if os.path.exists(file_path) and os.path.isfile(file_path):
             return FileResponse(file_path)
         
+        # Try appending .html
+        html_path = os.path.join(build_dir, full_path + ".html")
+        if os.path.exists(html_path) and os.path.isfile(html_path):
+            return FileResponse(html_path)
+            
+        if full_path == "" or full_path == "/":
+             index_path = os.path.join(build_dir, "index.html")
+             if os.path.exists(index_path):
+                return FileResponse(index_path)
+
         # 존재하지 않는 경로라면 index.html 반환 (Client-side Routing 지원)
         # 혹은 특정 페이지(analysis.html 등)로 매핑 로직 추가 가능
         index_path = os.path.join(build_dir, "index.html")
-        return FileResponse(index_path)
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+            
+        return HTTPException(status_code=404, detail="File not found and index.html not available")
 
 else:
     print("Warning: 'out' directory not found. Run 'npm run build' first.")
 
 if __name__ == "__main__":
     import uvicorn
-    print("Server running at: http://localhost:8000")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    print("Server running at: http://localhost:8001")
+    uvicorn.run(app, host="127.0.0.1", port=8001)
